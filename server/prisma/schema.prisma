@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  heightCm      Float?
+  weightKg      Float?
+  birthDate     DateTime?
+  gender        String?
+  goal          String?
+  activityLevel String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workoutPlans WorkoutPlan[]
+  workoutLogs  WorkoutLog[]
+  mealRecords  MealRecord[]
+  chatSessions ChatSession[]
+  customFoods  FoodItem[]       @relation("CustomFoodCreator")
+}
+
+model Exercise {
+  id           String   @id @default(uuid())
+  name         String
+  description  String   @default("")
+  category     String
+  muscleGroup  String
+  equipment    String   @default("")
+  difficulty   String   @default("beginner")
+  instructions String   @default("")
+  imageUrl     String   @default("")
+  createdAt    DateTime @default(now())
+
+  planExercises  WorkoutPlanExercise[]
+  logExercises   WorkoutLogExercise[]
+}
+
+model WorkoutPlan {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  description String   @default("")
+  isTemplate  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutPlanExercise[]
+  logs      WorkoutLog[]
+}
+
+model WorkoutPlanExercise {
+  id              String  @id @default(uuid())
+  planId          String
+  exerciseId      String
+  dayOfWeek       Int     @default(0)
+  sets            Int     @default(3)
+  reps            Int     @default(10)
+  durationSeconds Int     @default(0)
+  restSeconds     Int     @default(60)
+  sortOrder       Int     @default(0)
+  notes           String  @default("")
+
+  plan     WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercise Exercise    @relation(fields: [exerciseId], references: [id])
+}
+
+model WorkoutLog {
+  id              String   @id @default(uuid())
+  userId          String
+  planId          String?
+  date            DateTime
+  durationMinutes Int      @default(0)
+  notes           String   @default("")
+  createdAt       DateTime @default(now())
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan      WorkoutPlan?        @relation(fields: [planId], references: [id], onDelete: SetNull)
+  exercises WorkoutLogExercise[]
+}
+
+model WorkoutLogExercise {
+  id         String @id @default(uuid())
+  logId      String
+  exerciseId String
+  notes      String @default("")
+
+  log      WorkoutLog      @relation(fields: [logId], references: [id], onDelete: Cascade)
+  exercise Exercise        @relation(fields: [exerciseId], references: [id])
+  sets     WorkoutLogSet[]
+}
+
+model WorkoutLogSet {
+  id             String @id @default(uuid())
+  logExerciseId  String
+  setNumber      Int
+  reps           Int
+  weightKg       Float  @default(0)
+
+  logExercise WorkoutLogExercise @relation(fields: [logExerciseId], references: [id], onDelete: Cascade)
+}
+
+model FoodItem {
+  id              String   @id @default(uuid())
+  name            String
+  caloriesPer100g Float    @default(0)
+  proteinPer100g  Float    @default(0)
+  carbsPer100g    Float    @default(0)
+  fatPer100g      Float    @default(0)
+  servingSize     Float    @default(100)
+  servingUnit     String   @default("g")
+  isCustom        Boolean  @default(false)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  createdBy    User?        @relation("CustomFoodCreator", fields: [createdByUserId], references: [id])
+  mealRecords  MealRecord[]
+}
+
+model MealRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  date         DateTime
+  mealType     String
+  foodItemId   String
+  quantityGrams Float   @default(0)
+  createdAt    DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id])
+}
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String   @default("新对话")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}

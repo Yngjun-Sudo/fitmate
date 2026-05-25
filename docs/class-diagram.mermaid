@@ -1,0 +1,130 @@
+classDiagram
+    class User {
+        +String id
+        +String email
+        +String passwordHash
+        +String name
+        +Float heightCm
+        +Float weightKg
+        +Date birthDate
+        +String gender
+        +String goal
+        +String activityLevel
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class Exercise {
+        +String id
+        +String name
+        +String description
+        +String category
+        +String muscleGroup
+        +String equipment
+        +String difficulty
+        +String instructions
+        +String imageUrl
+        +DateTime createdAt
+    }
+
+    class WorkoutPlan {
+        +String id
+        +String userId
+        +String name
+        +String description
+        +Boolean isTemplate
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class WorkoutPlanExercise {
+        +String id
+        +String planId
+        +String exerciseId
+        +Int dayOfWeek
+        +Int sets
+        +Int reps
+        +Int durationSeconds
+        +Int restSeconds
+        +Int sortOrder
+        +String notes
+    }
+
+    class WorkoutLog {
+        +String id
+        +String userId
+        +String planId
+        +Date date
+        +Int durationMinutes
+        +String notes
+        +DateTime createdAt
+    }
+
+    class WorkoutLogExercise {
+        +String id
+        +String logId
+        +String exerciseId
+        +String notes
+    }
+
+    class WorkoutLogSet {
+        +String id
+        +String logExerciseId
+        +Int setNumber
+        +Int reps
+        +Float weightKg
+    }
+
+    class FoodItem {
+        +String id
+        +String name
+        +Float caloriesPer100g
+        +Float proteinPer100g
+        +Float carbsPer100g
+        +Float fatPer100g
+        +Float servingSize
+        +String servingUnit
+        +Boolean isCustom
+        +String createdByUserId
+        +DateTime createdAt
+    }
+
+    class MealRecord {
+        +String id
+        +String userId
+        +Date date
+        +String mealType
+        +String foodItemId
+        +Float quantityGrams
+        +DateTime createdAt
+    }
+
+    class ChatSession {
+        +String id
+        +String userId
+        +String title
+        +DateTime createdAt
+        +DateTime updatedAt
+    }
+
+    class ChatMessage {
+        +String id
+        +String sessionId
+        +String role
+        +String content
+        +DateTime createdAt
+    }
+
+    User "1" -- "*" WorkoutPlan : owns
+    User "1" -- "*" WorkoutLog : records
+    User "1" -- "*" MealRecord : tracks
+    User "1" -- "*" ChatSession : has
+    User "1" -- "*" FoodItem : creates(custom)
+    WorkoutPlan "1" -- "*" WorkoutPlanExercise : contains
+    Exercise "1" -- "*" WorkoutPlanExercise : referenced_by
+    WorkoutLog "1" -- "*" WorkoutLogExercise : contains
+    WorkoutPlan "1" -- "*" WorkoutLog : based_on
+    Exercise "1" -- "*" WorkoutLogExercise : referenced_by
+    WorkoutLogExercise "1" -- "*" WorkoutLogSet : has
+    FoodItem "1" -- "*" MealRecord : referenced_by
+    ChatSession "1" -- "*" ChatMessage : contains
