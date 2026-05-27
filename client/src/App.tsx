@@ -1,8 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './store/authStore';
 import AppLayout from './components/layout/AppLayout';
-import LoadingSpinner from './components/common/LoadingSpinner';
 
 // 页面懒加载
 import LoginPage from './pages/LoginPage';
@@ -17,22 +15,8 @@ import ExerciseDetailPage from './pages/ExerciseDetailPage';
 import DietPage from './pages/DietPage';
 import ChatPage from './pages/ChatPage';
 
-/** 受保护路由守卫 */
+/** 受保护路由守卫 — 已关闭，所有路由直接可访问 */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const token = useAuthStore((s) => s.token);
-  const user = useAuthStore((s) => s.user);
-  const fetchUser = useAuthStore((s) => s.fetchUser);
-
-  useEffect(() => {
-    if (token && !user) {
-      fetchUser();
-    }
-  }, [token, user, fetchUser]);
-
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-
   return <>{children}</>;
 };
 
