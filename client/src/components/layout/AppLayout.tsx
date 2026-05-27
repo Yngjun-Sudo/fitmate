@@ -10,14 +10,15 @@ const AppLayout: React.FC = () => {
   const { token, user, fetchUser, logout } = useAuthStore();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (token && !user) {
-      fetchUser();
-    }
-    if (!token) {
-      navigate('/login', { replace: true });
-    }
-  }, [token, user, fetchUser, navigate]);
+  // 登录已关闭，跳过 token 检查
+  // useEffect(() => {
+  //   if (token && !user) {
+  //     fetchUser();
+  //   }
+  //   if (!token) {
+  //     navigate('/login', { replace: true });
+  //   }
+  // }, [token, user, fetchUser, navigate]);
 
   const handleLogout = () => {
     logout();
