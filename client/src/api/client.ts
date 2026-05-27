@@ -24,21 +24,20 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// === 响应拦截器：统一处理 401 ===
+// === 响应拦截器：统一处理 401（静默处理，不跳转登录页） ===
 apiClient.interceptors.response.use(
   (response) => {
     const data = response.data as ApiResponse;
-    // 业务层面的认证错误
+    // 业务层面的认证错误 — 静默清除 token，不跳转
     if (data.code === 401) {
       localStorage.removeItem('fitness_token');
-      window.location.href = '/login';
     }
     return response;
   },
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
+      // 静默清除 token，不跳转登录页（登录已关闭）
       localStorage.removeItem('fitness_token');
-      window.location.href = '/login';
     }
     return Promise.reject(error);
   },
