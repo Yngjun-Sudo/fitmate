@@ -5,11 +5,198 @@ import * as dietService from './dietService';
 
 const prisma = new PrismaClient();
 
+// === Function Calling 工具定义 ===
+
+interface DeepSeekTool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+/** AI 可调用的工具列表 */
+const TOOLS: DeepSeekTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_workout_plan',
+      description:
+        '为用户创建一份健身训练计划。当用户要求制定训练计划、增肌计划、减脂计划、或安排一周训练时调用。先和用户确认目标、频率、偏好后再调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: '计划名称，例如「新手增肌计划」「四周减脂计划」',
+          },
+          description: {
+            type: 'string',
+            description: '计划简介，说明目标、适用人群、注意事项',
+          },
+          exercises: {
+            type: 'array',
+            description: '训练动作列表',
+            items: {
+              type: 'object',
+              properties: {
+                exerciseName: {
+                  type: 'string',
+                  description: '动作名称，如「杠铃卧推」「深蹲」「跑步」',
+                },
+                dayOfWeek: {
+                  type: 'integer',
+                  description: '星期几训练，1=周一...7=周日',
+                  minimum: 1,
+                  maximum: 7,
+                },
+                sets: {
+                  type: 'integer',
+                  description: '组数',
+                },
+                reps: {
+                  type: 'integer',
+                  description: '每组次数',
+                },
+                durationSeconds: {
+                  type: 'integer',
+                  description: '持续时间（秒），有氧运动用',
+                },
+                restSeconds: {
+                  type: 'integer',
+                  description: '组间休息秒数，默认60',
+                },
+                notes: {
+                  type: 'string',
+                  description: '备注，如动作要点或替代方案',
+                },
+              },
+              required: ['exerciseName', 'dayOfWeek', 'sets', 'reps'],
+            },
+          },
+        },
+        required: ['name', 'exercises'],
+      },
+    },
+  },
+];
+
+/** 工具调用请求 */
+interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+/** 工具执行结果 */
+interface ToolResult {
+  role: 'tool';
+  tool_call_id: string;
+  content: string;
+}
+
+/**
+ * 执行工具调用
+ */
+async function executeToolCall(
+  toolCall: ToolCall,
+  userId: string,
+): Promise<ToolResult> {
+  const args = JSON.parse(toolCall.function.arguments || '{}');
+
+  if (toolCall.function.name === 'create_workout_plan') {
+    const { name, description, exercises } = args as {
+      name: string;
+      description?: string;
+      exercises: {
+        exerciseName: string;
+        dayOfWeek: number;
+        sets: number;
+        reps: number;
+        durationSeconds?: number;
+        restSeconds?: number;
+        notes?: string;
+      }[];
+    };
+
+    // 解析动作名称 → ID（模糊匹配，找不到就创建）
+    const planExercises = await Promise.all(
+      exercises.map(async (ex, idx) => {
+        let exercise = await prisma.exercise.findFirst({
+          where: { name: { contains: ex.exerciseName, mode: 'insensitive' } },
+        });
+
+        if (!exercise) {
+          exercise = await prisma.exercise.create({
+            data: {
+              name: ex.exerciseName,
+              category: 'full_body',
+              muscleGroup: 'general',
+              difficulty: 'beginner',
+            },
+          });
+        }
+
+        return {
+          exerciseId: exercise.id,
+          dayOfWeek: ex.dayOfWeek,
+          sets: ex.sets,
+          reps: ex.reps,
+          durationSeconds: ex.durationSeconds || 0,
+          restSeconds: ex.restSeconds || 60,
+          sortOrder: idx,
+          notes: ex.notes || '',
+        };
+      }),
+    );
+
+    const plan = await prisma.workoutPlan.create({
+      data: {
+        userId,
+        name,
+        description: description || '',
+        exercises: { create: planExercises },
+      },
+      include: {
+        exercises: {
+          include: { exercise: true },
+          orderBy: [{ dayOfWeek: 'asc' }, { sortOrder: 'asc' }],
+        },
+      },
+    });
+
+    const summary = plan.exercises
+      .map(
+        (ex) =>
+          `星期${['一','二','三','四','五','六','日'][ex.dayOfWeek - 1]}: ${ex.exercise.name} ${ex.sets}×${ex.reps}`,
+      )
+      .join('\n');
+
+    return {
+      role: 'tool',
+      tool_call_id: toolCall.id,
+      content: `计划「${plan.name}」已创建成功！\n\n计划内容：\n${summary}\n\n用户可在「训练」页面查看和使用。`,
+    };
+  }
+
+  return {
+    role: 'tool',
+    tool_call_id: toolCall.id,
+    content: `未知工具: ${toolCall.function.name}`,
+  };
+}
+
 // === DeepSeek API 封装 ===
 
 interface DeepSeekMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 interface DeepSeekStreamChunk {
@@ -26,8 +213,37 @@ interface DeepSeekStreamChunk {
  * 调用 DeepSeek API（stream 模式），返回 ReadableStream
  */
 export async function streamChat(messages: DeepSeekMessage[]): Promise<Response> {
+  return callDeepSeek(messages, true);
+}
+
+/**
+ * 调用 DeepSeek API（非 stream 模式），返回完整 JSON 响应
+ */
+async function callDeepSeekNonStream(messages: DeepSeekMessage[]): Promise<Record<string, unknown>> {
+  const res = await callDeepSeek(messages, false);
+  return res.json();
+}
+
+/**
+ * 底层 DeepSeek API 调用
+ */
+async function callDeepSeek(messages: DeepSeekMessage[], stream: boolean): Promise<Response> {
   if (!config.deepseekApiKey) {
     throw new AppError(ErrorCode.INTERNAL_ERROR, 'DeepSeek API Key 未配置');
+  }
+
+  const body: Record<string, unknown> = {
+    model: 'deepseek-chat',
+    messages,
+    stream,
+    temperature: 0.7,
+    max_tokens: 2000,
+  };
+
+  // 如果是非 streaming 请求，携带工具定义
+  if (!stream) {
+    body.tools = TOOLS;
+    body.tool_choice = 'auto';
   }
 
   const response = await fetch(`${config.deepseekBaseUrl}/v1/chat/completions`, {
@@ -36,13 +252,7 @@ export async function streamChat(messages: DeepSeekMessage[]): Promise<Response>
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.deepseekApiKey}`,
     },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages,
-      stream: true,
-      temperature: 0.7,
-      max_tokens: 2000,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -51,6 +261,66 @@ export async function streamChat(messages: DeepSeekMessage[]): Promise<Response>
   }
 
   return response;
+}
+
+/**
+ * 处理用户消息（含工具调用回路）。
+ * 返回最终可 stream 的消息列表（用户消息 + 历史 + AI 的工具调用 + 工具结果）。
+ * 如果有工具调用，会在最后追加一轮 AI 的文字总结。
+ */
+export async function processToolCalls(
+  messages: DeepSeekMessage[],
+  userId: string,
+): Promise<{
+  messages: DeepSeekMessage[];
+  toolResults: ToolResult[];
+  hasToolCalls: boolean;
+}> {
+  const allToolResults: ToolResult[] = [];
+  const maxIterations = 2;
+  let hasToolCalls = false;
+
+  for (let i = 0; i < maxIterations; i++) {
+    const completion = await callDeepSeekNonStream(messages);
+    const choice = (completion.choices as Array<Record<string, unknown>>)?.[0];
+    const message = choice?.message as Record<string, unknown> | undefined;
+    const toolCalls = message?.tool_calls as ToolCall[] | undefined;
+    const content = message?.content as string | undefined;
+
+    if (!toolCalls || toolCalls.length === 0) {
+      // 没有工具调用 → 把 AI 的文本回复加入，返回
+      if (content) {
+        messages.push({ role: 'assistant', content } as DeepSeekMessage);
+      }
+      return { messages, toolResults: allToolResults, hasToolCalls };
+    }
+
+    // 有工具调用
+    hasToolCalls = true;
+    messages.push(message as unknown as DeepSeekMessage);
+
+    // 执行工具
+    for (const tc of toolCalls) {
+      const result = await executeToolCall(tc, userId);
+      allToolResults.push(result);
+      messages.push({
+        role: 'tool',
+        tool_call_id: result.tool_call_id,
+        content: result.content,
+      } as DeepSeekMessage);
+    }
+
+    // 工具执行完后，再调一次 AI 获取文字总结
+    const finalCompletion = await callDeepSeekNonStream(messages);
+    const finalChoice = (finalCompletion.choices as Array<Record<string, unknown>>)?.[0];
+    const finalContent = finalChoice?.message?.content as string | undefined;
+    if (finalContent) {
+      messages.push({ role: 'assistant', content: finalContent } as DeepSeekMessage);
+    }
+    return { messages, toolResults: allToolResults, hasToolCalls };
+  }
+
+  return { messages, toolResults: allToolResults, hasToolCalls };
 }
 
 // === 对话管理 ===

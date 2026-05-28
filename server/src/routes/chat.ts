@@ -55,7 +55,7 @@ router.get('/sessions/:id', async (req: Request, res: Response, next: NextFuncti
 });
 
 /**
- * POST /api/chat — 发送消息（SSE 流式返回 AI 回复）
+ * POST /api/chat — 发送消息（SSE 流式返回 AI 回复）+ 支持 Function Calling 创建训练计划
  */
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -96,6 +96,41 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     // 构造消息
     const messages = await aiService.buildMessages(req.user.userId, session);
+
+    // ========== 工具调用回路 ==========
+    const { toolResults, hasToolCalls } = await aiService.processToolCalls(
+      messages,
+      req.user.userId,
+    );
+
+    if (hasToolCalls) {
+      // 有工具调用 → 发送工具执行结果给前端
+      for (const tr of toolResults) {
+        res.write(`data: ${JSON.stringify({ type: 'tool_result', content: tr.content })}\n\n`);
+      }
+
+      // 提取 AI 的最后文字回复（已由 processToolCalls 追加到 messages 末尾）
+      const lastMsg = messages[messages.length - 1];
+      const fullContent = lastMsg?.role === 'assistant' ? (lastMsg as Record<string,string>).content || '' : '';
+
+      if (fullContent) {
+        // 逐句发送（模拟流式效果）
+        const chunks = fullContent.split(/(?<=[。！？\n])/);
+        for (const chunk of chunks) {
+          if (chunk.trim()) {
+            res.write(`data: ${JSON.stringify({ type: 'token', content: chunk })}\n\n`);
+          }
+        }
+        await aiService.saveMessage(session, 'assistant', fullContent);
+        await aiService.updateSessionTitle(session, message);
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
+    // ========== 无工具调用 → 正常流式对话 ==========
 
     // 调用 DeepSeek stream API
     const deepseekRes = await aiService.streamChat(messages);

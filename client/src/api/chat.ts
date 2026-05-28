@@ -24,6 +24,7 @@ export interface ChatStreamCallbacks {
   onToken?: (token: string) => void;
   onDone?: (fullContent: string) => void;
   onError?: (error: string) => void;
+  onToolResult?: (content: string) => void;
 }
 
 /**
@@ -91,6 +92,8 @@ export function sendChatMessage(
                 callbacks.onToken?.(parsed.content);
               } else if (parsed.type === 'error') {
                 callbacks.onError?.(parsed.message);
+              } else if (parsed.type === 'tool_result') {
+                callbacks.onToolResult?.(parsed.content);
               }
             } catch {
               // skip

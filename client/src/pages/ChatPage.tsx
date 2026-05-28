@@ -85,6 +85,7 @@ const ChatPage: React.FC = () => {
     setMessages((prev) => [...prev, { id: tempId, role: 'user', content: message }]);
     setIsStreaming(true);
     setStreamingContent('');
+    setError(null);
 
     let newSessionId = currentSessionId;
 
@@ -112,6 +113,13 @@ const ChatPage: React.FC = () => {
         setError(errMsg);
         setIsStreaming(false);
         setStreamingContent('');
+      },
+      onToolResult: (content) => {
+        // 工具执行结果 → 插入为系统消息
+        setMessages((prev) => [
+          ...prev,
+          { id: `tool-${Date.now()}`, role: 'assistant', content },
+        ]);
       },
     });
   };
