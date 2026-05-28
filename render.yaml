@@ -2,13 +2,16 @@ services:
   - type: web
     name: fitmate-server
     env: node
-    buildCommand: npm install && npm run build && npx prisma generate
-    startCommand: npx prisma migrate deploy && npx prisma db seed && node dist/index.js
+    rootDir: server
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && node dist/index.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "3001"
+      - key: LOCAL_DEV
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
       - key: DEEPSEEK_API_KEY

@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, List, ListItem, ListItemButton, ListItemText, Typography,
-  IconButton, Drawer, Divider, CircularProgress, Button,
+  IconButton, Drawer, Divider, CircularProgress, Button, Chip,
 } from '@mui/material';
-import { Add, Menu, Chat as ChatIcon } from '@mui/icons-material';
+import { Add, Menu, Chat as ChatIcon, FitnessCenter } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import ChatWindow from '../components/chat/ChatWindow';
 import ChatInput from '../components/chat/ChatInput';
 import { getChatSessions, getChatMessages, createChatSession, sendChatMessage } from '../api/chat';
@@ -13,6 +14,7 @@ interface DisplayMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  isToolResult?: boolean;
 }
 
 /** AI 助手页面 */
@@ -26,6 +28,7 @@ const ChatPage: React.FC = () => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // 加载会话列表
   const loadSessions = useCallback(async () => {
@@ -88,6 +91,7 @@ const ChatPage: React.FC = () => {
     setError(null);
 
     let newSessionId = currentSessionId;
+    let hasToolResult = false; // 跟踪是否有工具结果，避免 onDone 重复添加
 
     sendChatMessage(message, currentSessionId, {
       onSession: (sessionId) => {
@@ -99,10 +103,18 @@ const ChatPage: React.FC = () => {
         setStreamingContent((prev) => prev + token);
       },
       onDone: (fullContent) => {
-        setMessages((prev) => [
-          ...prev,
-          { id: `assistant-${Date.now()}`, role: 'assistant', content: fullContent },
-        ]);
+        // 如果已有工具结果，且流式内容为空，不重复添加消息
+        if (hasToolResult && !fullContent.trim()) {
+          setIsStreaming(false);
+          setStreamingContent('');
+          return;
+        }
+        if (fullContent.trim()) {
+          setMessages((prev) => [
+            ...prev,
+            { id: `assistant-${Date.now()}`, role: 'assistant', content: fullContent },
+          ]);
+        }
         setIsStreaming(false);
         setStreamingContent('');
         if (newSessionId) {
@@ -115,10 +127,11 @@ const ChatPage: React.FC = () => {
         setStreamingContent('');
       },
       onToolResult: (content) => {
-        // 工具执行结果 → 插入为系统消息
+        hasToolResult = true;
+        // 工具执行结果 → 插入为 assistant 消息（带跳转标记）
         setMessages((prev) => [
           ...prev,
-          { id: `tool-${Date.now()}`, role: 'assistant', content },
+          { id: `tool-${Date.now()}`, role: 'assistant', content, isToolResult: true },
         ]);
       },
     });

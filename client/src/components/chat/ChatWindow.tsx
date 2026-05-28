@@ -1,10 +1,13 @@
 import React, { useRef, useEffect } from 'react';
-import { Box, Typography, CircularProgress, Paper } from '@mui/material';
+import { Box, Typography, CircularProgress, Paper, Button, Chip } from '@mui/material';
+import { FitnessCenter } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  isToolResult?: boolean;
 }
 
 interface ChatWindowProps {
@@ -13,9 +16,10 @@ interface ChatWindowProps {
   streamingContent?: string;
 }
 
-/** 聊天消息窗口 — 支持流式渲染 */
+/** 聊天消息窗口 — 支持流式渲染 + 工具结果跳转 */
 const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isStreaming, streamingContent }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,17 +55,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, isStreaming, streamin
             sx={{
               p: 1.5,
               maxWidth: '85%',
-              bgcolor: msg.role === 'user' ? 'primary.main' : 'grey.100',
+              bgcolor: msg.role === 'user' ? 'primary.main' : msg.isToolResult ? '#e8f5e9' : 'grey.100',
               color: msg.role === 'user' ? 'white' : 'text.primary',
               borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+              border: msg.isToolResult ? '1px solid' : 'none',
+              borderColor: msg.isToolResult ? 'success.main' : 'transparent',
             }}
           >
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {msg.content}
             </Typography>
+            {msg.isToolResult && (
+              <Box sx={{ mt: 1, pt: 1, borderTop: '1px dashed', borderColor: 'success.main' }}>
+                <Chip
+                  icon={<FitnessCenter />}
+                  label="查看训练计划"
+                  color="success"
+                  variant="outlined"
+                  size="small"
+                  onClick={() => navigate('/workout/plans')}
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Box>
+            )}
           </Paper>
           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, px: 1 }}>
-            {msg.role === 'user' ? '你' : 'AI助手'}
+            {msg.role === 'user' ? '你' : msg.isToolResult ? '🎯 计划已生成' : 'AI助手'}
           </Typography>
         </Box>
       ))}

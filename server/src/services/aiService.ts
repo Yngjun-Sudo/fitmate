@@ -193,7 +193,7 @@ async function executeToolCall(
       return {
         role: 'tool',
         tool_call_id: toolCall.id,
-        content: `计划「${plan.name}」已创建成功！\n\n计划内容：\n${summary}\n\n用户可在「训练」页面查看和使用。`,
+        content: `✅ 计划「${plan.name}」已创建成功！\n\n📋 计划内容：\n${summary}\n\n👉 前往「训练」页面查看和使用你的新计划！`,
       };
     }
 
@@ -260,7 +260,7 @@ async function callDeepSeek(messages: DeepSeekMessage[], stream: boolean): Promi
     messages,
     stream,
     temperature: 0.7,
-    max_tokens: 2000,
+    max_tokens: stream ? 2000 : 800, // 非流式（工具调用）减少 token 加快响应
   };
 
   // 如果是非 streaming 请求，携带工具定义
@@ -297,7 +297,7 @@ export function isPlanRequest(messages: DeepSeekMessage[]): boolean {
 
 /**
  * 处理用户消息（含工具调用回路）。
- * 如果用户消息包含计划相关关键词，在消息末尾注入强制工具调用指令。
+ * 优化版：去掉第二轮 API 调用（避免 Vercel 10s 超时），直接用工具结果作为响应。
  */
 export async function processToolCalls(
   messages: DeepSeekMessage[],
@@ -308,7 +308,6 @@ export async function processToolCalls(
   hasToolCalls: boolean;
 }> {
   const allToolResults: ToolResult[] = [];
-  const maxIterations = 2;
   let hasToolCalls = false;
 
   // 强制注入工具调用指令（调用方已确认是计划请求）
@@ -318,50 +317,41 @@ export async function processToolCalls(
     content: '【系统指令】用户刚才要求制定训练计划。你必须立即调用 create_workout_plan 工具来创建计划。不要用文字描述计划内容。不要追问任何细节。直接调用工具，所有参数使用合理默认值：新手水平、每周3天、全身复合动作（深蹲、卧推、划船、推举、硬拉等），每组8-12次，每组休息60-90秒。调用后简单告知用户计划已保存。',
   });
 
-  for (let i = 0; i < maxIterations; i++) {
-    const completion = await callDeepSeekNonStream(toolMessages);
-    const choice = (completion.choices as Array<Record<string, unknown>>)?.[0];
-    const msg = choice?.message as Record<string, unknown> | undefined;
-    const toolCalls = msg?.tool_calls as ToolCall[] | undefined;
+  // 只做一轮 API 调用（避免超时）
+  const completion = await callDeepSeekNonStream(toolMessages);
+  const choice = (completion.choices as Array<Record<string, unknown>>)?.[0];
+  const msg = choice?.message as Record<string, unknown> | undefined;
+  const toolCalls = msg?.tool_calls as ToolCall[] | undefined;
 
-    if (!toolCalls || toolCalls.length === 0) {
-      return { messages, toolResults: allToolResults, hasToolCalls };
-    }
-
-    // 有工具调用 → 同步追加到两个列表
-    hasToolCalls = true;
-    const assistantMsg: DeepSeekMessage = {
-      role: 'assistant',
-      content: (msg?.content as string) || null,
-      tool_calls: toolCalls,
-    };
-    toolMessages.push(assistantMsg);
-    messages.push(assistantMsg);
-
-    for (const tc of toolCalls) {
-      const result = await executeToolCall(tc, userId);
-      allToolResults.push(result);
-      const toolMsg: DeepSeekMessage = {
-        role: 'tool',
-        content: result.content,
-        tool_call_id: result.tool_call_id,
-      };
-      toolMessages.push(toolMsg);
-      messages.push(toolMsg);
-    }
-
-    // 工具执行完后，再调 AI 获取文字总结
-    const finalCompletion = await callDeepSeekNonStream(toolMessages);
-    const finalChoice = (finalCompletion.choices as Array<Record<string, unknown>>)?.[0];
-    const finalContent = finalChoice?.message?.content as string | undefined;
-    if (finalContent) {
-      const finalMsg: DeepSeekMessage = { role: 'assistant', content: finalContent };
-      toolMessages.push(finalMsg);
-      messages.push(finalMsg);
+  if (!toolCalls || toolCalls.length === 0) {
+    // AI 没调工具 — 把 AI 的文字回复也返回给调用方
+    const textContent = (msg?.content as string) || '';
+    if (textContent) {
+      messages.push({ role: 'assistant', content: textContent });
     }
     return { messages, toolResults: allToolResults, hasToolCalls };
   }
 
+  // 有工具调用 → 执行
+  hasToolCalls = true;
+  const assistantMsg: DeepSeekMessage = {
+    role: 'assistant',
+    content: (msg?.content as string) || null,
+    tool_calls: toolCalls,
+  };
+  messages.push(assistantMsg);
+
+  for (const tc of toolCalls) {
+    const result = await executeToolCall(tc, userId);
+    allToolResults.push(result);
+    messages.push({
+      role: 'tool',
+      content: result.content,
+      tool_call_id: result.tool_call_id,
+    });
+  }
+
+  // 不再做第二轮 API 调用获取摘要——直接用工具结果作为响应，节省 50% 时间
   return { messages, toolResults: allToolResults, hasToolCalls };
 }
 

@@ -1,13 +1,15 @@
 import axios from 'axios';
 import type { ApiResponse } from '../types';
 
-// 生产环境用 Vercel 后端，开发环境用相对路径走 Vite 代理
+// 支持多环境部署：Vercel / Netlify / 本地开发
+// Netlify 部署时设置 VITE_API_URL 指向 Render 后端
+// Render 后端地址需要在部署后填入
 const BASE = (import.meta as any).env?.VITE_API_URL || 'https://fitmate-api-jet.vercel.app';
 export const API_BASE = BASE + '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: 60000, // 增加到 60s，工具调用可能需要更长时间
   headers: {
     'Content-Type': 'application/json',
   },
