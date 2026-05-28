@@ -288,8 +288,7 @@ async function callDeepSeek(messages: DeepSeekMessage[], stream: boolean): Promi
 
 /**
  * 处理用户消息（含工具调用回路）。
- * 返回最终可 stream 的消息列表（用户消息 + 历史 + AI 的工具调用 + 工具结果）。
- * 如果有工具调用，会在最后追加一轮 AI 的文字总结。
+ * 如果用户消息包含计划相关关键词，在消息末尾注入强制工具调用指令。
  */
 export async function processToolCalls(
   messages: DeepSeekMessage[],
@@ -303,39 +302,60 @@ export async function processToolCalls(
   const maxIterations = 2;
   let hasToolCalls = false;
 
+  // 检查最后一条用户消息是否匹配计划需求关键词
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  const planKeywords = /(?:训练|健身|增肌|减脂|塑形|力量|计划|安排|帮我做|帮我制定|帮我设计|给我一个)/;
+  const isPlanRequest = lastUserMsg && planKeywords.test(lastUserMsg.content || '');
+
+  // 强制注入工具调用指令
+  const toolMessages = [...messages];
+  if (isPlanRequest) {
+    toolMessages.push({
+      role: 'system' as const,
+      content: '【系统指令】用户刚才要求制定训练计划。你必须立即调用 create_workout_plan 工具来创建计划。不要用文字描述计划内容。不要追问任何细节。直接调用工具，所有参数使用合理默认值：新手水平、每周3天、全身复合动作（深蹲、卧推、划船、推举、硬拉等），每组8-12次，每组休息60-90秒。调用后简单告知用户计划已保存。',
+    });
+  }
+
   for (let i = 0; i < maxIterations; i++) {
-    const completion = await callDeepSeekNonStream(messages);
+    const completion = await callDeepSeekNonStream(toolMessages);
     const choice = (completion.choices as Array<Record<string, unknown>>)?.[0];
-    const message = choice?.message as Record<string, unknown> | undefined;
-    const toolCalls = message?.tool_calls as ToolCall[] | undefined;
-    const content = message?.content as string | undefined;
+    const msg = choice?.message as Record<string, unknown> | undefined;
+    const toolCalls = msg?.tool_calls as ToolCall[] | undefined;
 
     if (!toolCalls || toolCalls.length === 0) {
-      // 没有工具调用 → 不追加 AI 回复（留给 streamChat 生成），直接返回原 messages
       return { messages, toolResults: allToolResults, hasToolCalls };
     }
 
-    // 有工具调用
+    // 有工具调用 → 同步追加到两个列表
     hasToolCalls = true;
-    messages.push(message as unknown as DeepSeekMessage);
+    const assistantMsg: DeepSeekMessage = {
+      role: 'assistant',
+      content: (msg?.content as string) || null,
+      tool_calls: toolCalls,
+    };
+    toolMessages.push(assistantMsg);
+    messages.push(assistantMsg);
 
-    // 执行工具
     for (const tc of toolCalls) {
       const result = await executeToolCall(tc, userId);
       allToolResults.push(result);
-      messages.push({
+      const toolMsg: DeepSeekMessage = {
         role: 'tool',
-        tool_call_id: result.tool_call_id,
         content: result.content,
-      } as DeepSeekMessage);
+        tool_call_id: result.tool_call_id,
+      };
+      toolMessages.push(toolMsg);
+      messages.push(toolMsg);
     }
 
-    // 工具执行完后，再调一次 AI 获取文字总结
-    const finalCompletion = await callDeepSeekNonStream(messages);
+    // 工具执行完后，再调 AI 获取文字总结
+    const finalCompletion = await callDeepSeekNonStream(toolMessages);
     const finalChoice = (finalCompletion.choices as Array<Record<string, unknown>>)?.[0];
     const finalContent = finalChoice?.message?.content as string | undefined;
     if (finalContent) {
-      messages.push({ role: 'assistant', content: finalContent } as DeepSeekMessage);
+      const finalMsg: DeepSeekMessage = { role: 'assistant', content: finalContent };
+      toolMessages.push(finalMsg);
+      messages.push(finalMsg);
     }
     return { messages, toolResults: allToolResults, hasToolCalls };
   }
