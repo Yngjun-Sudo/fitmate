@@ -23,7 +23,7 @@ const TOOLS: DeepSeekTool[] = [
     function: {
       name: 'create_workout_plan',
       description:
-        '为用户创建一份健身训练计划。当用户要求制定训练计划、增肌计划、减脂计划、或安排一周训练时调用。先和用户确认目标、频率、偏好后再调用。',
+        '创建并保存训练计划到用户账户。必须在用户第一次提出计划需求时调用，不要先文字描述。缺失信息用合理默认值。',
       parameters: {
         type: 'object',
         properties: {
@@ -459,6 +459,12 @@ export async function buildSystemPrompt(userId: string): Promise<string> {
 
   prompt += `\n请你基于以上数据，为用户提供个性化、专业、安全的健身和饮食建议。`;
   prompt += `\n回复要求：简洁有条理，使用中文，适当使用emoji增加亲和力。涉及具体训练建议时提醒用户注意安全。`;
+
+  // 工具调用指令 — 必须强硬，否则 AI 只描述不调用
+  prompt += `\n\n## 训练计划生成：强制规则`;
+  prompt += `\n当用户要求制定训练计划时，你必须立即调用 create_workout_plan 工具。禁止仅用文字描述计划。禁止反复追问细节。缺失信息用默认值：新手、每周3天、全身复合动作。`;
+  prompt += `\n调用完毕后简短告知用户计划已保存，可在「训练」页面查看和修改。`;
+  prompt += `\n\n示例：用户说"帮我做计划" → 直接调用工具，计划名="自定义训练计划"，动作包含深蹲/卧推/划船/推举等，分3天安排。`;
 
   return prompt;
 }
