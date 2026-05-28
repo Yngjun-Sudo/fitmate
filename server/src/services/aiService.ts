@@ -287,6 +287,15 @@ async function callDeepSeek(messages: DeepSeekMessage[], stream: boolean): Promi
 }
 
 /**
+ * 判断用户消息是否包含计划需求关键词
+ */
+export function isPlanRequest(messages: DeepSeekMessage[]): boolean {
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  const userText = lastUserMsg?.content || '';
+  return /(?:训练|健身|增肌|减脂|塑形|运动|力量|体能).*(?:计划|方案|安排)|(?:帮我|给我|做个|搞个|制定|创建|生成|设计).*(?:计划|方案|安排)|(?:计划|方案|安排).*(?:训练|健身|增肌|减脂)/.test(userText);
+}
+
+/**
  * 处理用户消息（含工具调用回路）。
  * 如果用户消息包含计划相关关键词，在消息末尾注入强制工具调用指令。
  */
@@ -302,19 +311,12 @@ export async function processToolCalls(
   const maxIterations = 2;
   let hasToolCalls = false;
 
-  // 检查最后一条用户消息是否匹配计划需求关键词
-  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-  const planKeywords = /(?:帮我做|帮我制定|帮我设计|帮我创建|帮我生成|给我一个|给我一份|制定一个|创建一份|做个|搞个)(?:.*)(?:训练|健身|增肌|减脂|塑形|运动)(?:.*)(?:计划|方案|安排)/;
-  const isPlanRequest = lastUserMsg && planKeywords.test(lastUserMsg.content || '');
-
-  // 强制注入工具调用指令
+  // 强制注入工具调用指令（调用方已确认是计划请求）
   const toolMessages = [...messages];
-  if (isPlanRequest) {
-    toolMessages.push({
-      role: 'system' as const,
-      content: '【系统指令】用户刚才要求制定训练计划。你必须立即调用 create_workout_plan 工具来创建计划。不要用文字描述计划内容。不要追问任何细节。直接调用工具，所有参数使用合理默认值：新手水平、每周3天、全身复合动作（深蹲、卧推、划船、推举、硬拉等），每组8-12次，每组休息60-90秒。调用后简单告知用户计划已保存。',
-    });
-  }
+  toolMessages.push({
+    role: 'system' as const,
+    content: '【系统指令】用户刚才要求制定训练计划。你必须立即调用 create_workout_plan 工具来创建计划。不要用文字描述计划内容。不要追问任何细节。直接调用工具，所有参数使用合理默认值：新手水平、每周3天、全身复合动作（深蹲、卧推、划船、推举、硬拉等），每组8-12次，每组休息60-90秒。调用后简单告知用户计划已保存。',
+  });
 
   for (let i = 0; i < maxIterations; i++) {
     const completion = await callDeepSeekNonStream(toolMessages);
