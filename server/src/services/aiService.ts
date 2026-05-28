@@ -106,88 +106,111 @@ async function executeToolCall(
   toolCall: ToolCall,
   userId: string,
 ): Promise<ToolResult> {
-  const args = JSON.parse(toolCall.function.arguments || '{}');
+  try {
+    const args = JSON.parse(toolCall.function.arguments || '{}');
 
-  if (toolCall.function.name === 'create_workout_plan') {
-    const { name, description, exercises } = args as {
-      name: string;
-      description?: string;
-      exercises: {
-        exerciseName: string;
-        dayOfWeek: number;
-        sets: number;
-        reps: number;
-        durationSeconds?: number;
-        restSeconds?: number;
-        notes?: string;
-      }[];
-    };
-
-    // 解析动作名称 → ID（模糊匹配，找不到就创建）
-    const planExercises = await Promise.all(
-      exercises.map(async (ex, idx) => {
-        let exercise = await prisma.exercise.findFirst({
-          where: { name: { contains: ex.exerciseName, mode: 'insensitive' } },
-        });
-
-        if (!exercise) {
-          exercise = await prisma.exercise.create({
-            data: {
-              name: ex.exerciseName,
-              category: 'full_body',
-              muscleGroup: 'general',
-              difficulty: 'beginner',
-            },
-          });
-        }
-
-        return {
-          exerciseId: exercise.id,
-          dayOfWeek: ex.dayOfWeek,
-          sets: ex.sets,
-          reps: ex.reps,
-          durationSeconds: ex.durationSeconds || 0,
-          restSeconds: ex.restSeconds || 60,
-          sortOrder: idx,
-          notes: ex.notes || '',
-        };
-      }),
-    );
-
-    const plan = await prisma.workoutPlan.create({
-      data: {
-        userId,
-        name,
-        description: description || '',
-        exercises: { create: planExercises },
-      },
-      include: {
+    if (toolCall.function.name === 'create_workout_plan') {
+      const { name, description, exercises } = args as {
+        name: string;
+        description?: string;
         exercises: {
-          include: { exercise: true },
-          orderBy: [{ dayOfWeek: 'asc' }, { sortOrder: 'asc' }],
-        },
-      },
-    });
+          exerciseName: string;
+          dayOfWeek: number;
+          sets: number;
+          reps: number;
+          durationSeconds?: number;
+          restSeconds?: number;
+          notes?: string;
+        }[];
+      };
 
-    const summary = plan.exercises
-      .map(
-        (ex) =>
-          `星期${['一','二','三','四','五','六','日'][ex.dayOfWeek - 1]}: ${ex.exercise.name} ${ex.sets}×${ex.reps}`,
-      )
-      .join('\n');
+      // 解析动作名称 → ID（精确匹配，trim 后比较；找不到则创建）
+      const planExercises = await Promise.all(
+        exercises.map(async (ex, idx) => {
+          const cleanName = ex.exerciseName.trim();
+          let exercise = await prisma.exercise.findFirst({
+            where: { name: { equals: cleanName, mode: 'insensitive' } },
+          });
+
+          if (!exercise) {
+            try {
+              exercise = await prisma.exercise.create({
+                data: {
+                  name: cleanName,
+                  category: 'full_body',
+                  muscleGroup: 'general',
+                  difficulty: 'beginner',
+                },
+              });
+            } catch (createErr: unknown) {
+              const prismaErr = createErr as { code?: string };
+              if (prismaErr.code === 'P2002') {
+                exercise = await prisma.exercise.findFirst({
+                  where: { name: { equals: cleanName, mode: 'insensitive' } },
+                });
+                if (!exercise) throw createErr;
+              } else {
+                throw createErr;
+              }
+            }
+          }
+
+          return {
+            exerciseId: exercise.id,
+            dayOfWeek: ex.dayOfWeek,
+            sets: ex.sets,
+            reps: ex.reps,
+            durationSeconds: ex.durationSeconds || 0,
+            restSeconds: ex.restSeconds || 60,
+            sortOrder: idx,
+            notes: ex.notes || '',
+          };
+        }),
+      );
+
+      const plan = await prisma.workoutPlan.create({
+        data: {
+          userId,
+          name,
+          description: description || '',
+          exercises: { create: planExercises },
+        },
+        include: {
+          exercises: {
+            include: { exercise: true },
+            orderBy: [{ dayOfWeek: 'asc' }, { sortOrder: 'asc' }],
+          },
+        },
+      });
+
+      const summary = plan.exercises
+        .map(
+          (ex) =>
+            `星期${['一','二','三','四','五','六','日'][ex.dayOfWeek - 1]}: ${ex.exercise.name} ${ex.sets}×${ex.reps}`,
+        )
+        .join('\n');
+
+      return {
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: `计划「${plan.name}」已创建成功！\n\n计划内容：\n${summary}\n\n用户可在「训练」页面查看和使用。`,
+      };
+    }
 
     return {
       role: 'tool',
       tool_call_id: toolCall.id,
-      content: `计划「${plan.name}」已创建成功！\n\n计划内容：\n${summary}\n\n用户可在「训练」页面查看和使用。`,
+      content: `未知工具: ${toolCall.function.name}`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '工具执行失败';
+    console.error('[ToolCall Error]', msg);
+    return {
+      role: 'tool',
+      tool_call_id: toolCall.id,
+      content: `❌ 创建失败：${msg}`,
     };
   }
-
-  return {
-    role: 'tool',
-    tool_call_id: toolCall.id,
-    content: `未知工具: ${toolCall.function.name}`,
-  };
 }
 
 // === DeepSeek API 封装 ===
@@ -288,10 +311,7 @@ export async function processToolCalls(
     const content = message?.content as string | undefined;
 
     if (!toolCalls || toolCalls.length === 0) {
-      // 没有工具调用 → 把 AI 的文本回复加入，返回
-      if (content) {
-        messages.push({ role: 'assistant', content } as DeepSeekMessage);
-      }
+      // 没有工具调用 → 不追加 AI 回复（留给 streamChat 生成），直接返回原 messages
       return { messages, toolResults: allToolResults, hasToolCalls };
     }
 
