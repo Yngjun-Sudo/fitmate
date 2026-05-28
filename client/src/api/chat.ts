@@ -1,4 +1,4 @@
-import apiClient from './client';
+import apiClient, { API_BASE } from './client';
 import type { ApiResponse, ChatSession, ChatMessage } from '../types';
 
 // === 对话会话 ===
@@ -38,7 +38,7 @@ export function sendChatMessage(
   const controller = new AbortController();
   const token = localStorage.getItem('fitness_token');
 
-  fetch('/api/chat', {
+  fetch(API_BASE + '/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

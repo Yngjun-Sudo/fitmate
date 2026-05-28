@@ -2,7 +2,8 @@ import axios from 'axios';
 import type { ApiResponse } from '../types';
 
 // 生产环境用 Vercel 后端，开发环境用相对路径走 Vite 代理
-const API_BASE = (import.meta as any).env?.VITE_API_URL || 'https://fitmate-api-jet.vercel.app';
+const BASE = (import.meta as any).env?.VITE_API_URL || 'https://fitmate-api-jet.vercel.app';
+export const API_BASE = BASE + '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE,
