@@ -45,10 +45,13 @@ const DashboardPage: React.FC = () => {
   }, []);
 
   // 今日训练概览
-  const hasTrained = todayLogs.length > 0;
+  const safeTodayLogs = Array.isArray(todayLogs) ? todayLogs : [];
+  const safeMealRecords = Array.isArray(mealRecords) ? mealRecords : [];
+  const safeRecentLogs = Array.isArray(recentLogs) ? recentLogs : [];
+  const hasTrained = safeTodayLogs.length > 0;
 
   // 今日饮食热量
-  const todayCalories = mealRecords.reduce((sum, r) => {
+  const todayCalories = safeMealRecords.reduce((sum, r) => {
     if (!r.foodItem) return sum;
     return sum + (r.foodItem.caloriesPer100g / 100) * r.quantityGrams;
   }, 0);
@@ -93,7 +96,7 @@ const DashboardPage: React.FC = () => {
                 {hasTrained ? '已完成' : '今日训练'}
               </Typography>
               <Typography variant="body2">
-                {hasTrained ? `${todayLogs.length} 项训练` : '还未开始'}
+                {hasTrained ? `${safeTodayLogs.length} 项训练` : '还未开始'}
               </Typography>
             </CardContent>
           </Card>
@@ -170,7 +173,7 @@ const DashboardPage: React.FC = () => {
         </Button>
       </Box>
 
-      {recentLogs.length === 0 ? (
+      {safeRecentLogs.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
             还没有训练记录，快去开始你的第一次训练吧！
@@ -178,7 +181,7 @@ const DashboardPage: React.FC = () => {
         </Paper>
       ) : (
         <List disablePadding>
-          {recentLogs.slice(0, 5).map((log) => (
+          {safeRecentLogs.slice(0, 5).map((log) => (
             <Paper key={log.id} variant="outlined" sx={{ mb: 1 }}>
               <ListItem>
                 <ListItemText
