@@ -31,8 +31,8 @@ export async function createFoodItem(data: {
 
 // === 饮食记录 ===
 export async function getMealRecords(date: string): Promise<MealRecord[]> {
-  const res = await apiClient.get<ApiResponse<MealRecord[]>>('/diet/meal-records', { params: { date } });
-  return res.data.data!;
+  const res = await apiClient.get<ApiResponse<PaginatedResponse<MealRecord>>>('/diet/meal-records', { params: { date } });
+  return res.data.data?.items ?? [];
 }
 
 export async function createMealRecord(input: CreateMealRecordInput): Promise<MealRecord> {
