@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 export interface CreatePlanInput {
   name: string;
   description?: string;
-  exercises: {
+  exercises?: {
     exerciseId: string;
     dayOfWeek: number;
     sets: number;
@@ -59,13 +59,14 @@ export async function getPlanById(planId: string) {
  * 创建训练计划（含嵌套 WorkoutPlanExercise）
  */
 export async function createPlan(userId: string, input: CreatePlanInput) {
+  const exercises = input.exercises || [];
   return prisma.workoutPlan.create({
     data: {
       userId,
       name: input.name,
       description: input.description || '',
       exercises: {
-        create: input.exercises.map((ex, idx) => ({
+        create: exercises.map((ex, idx) => ({
           exerciseId: ex.exerciseId,
           dayOfWeek: ex.dayOfWeek,
           sets: ex.sets,
