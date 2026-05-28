@@ -304,7 +304,7 @@ export async function processToolCalls(
 
   // 检查最后一条用户消息是否匹配计划需求关键词
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-  const planKeywords = /(?:训练|健身|增肌|减脂|塑形|力量|计划|安排|帮我做|帮我制定|帮我设计|给我一个)/;
+  const planKeywords = /(?:帮我做|帮我制定|帮我设计|帮我创建|帮我生成|给我一个|给我一份|制定一个|创建一份|做个|搞个)(?:.*)(?:训练|健身|增肌|减脂|塑形|运动)(?:.*)(?:计划|方案|安排)/;
   const isPlanRequest = lastUserMsg && planKeywords.test(lastUserMsg.content || '');
 
   // 强制注入工具调用指令
