@@ -1,0 +1,19 @@
+name = "fitmate"
+type = "pages"
+
+# 构建输出目录
+pages_build_output_dir = "./client/dist"
+
+[build]
+command = "cd client && npm install && npm run build"
+destination_dir = "client/dist"
+
+[build.environment]
+NODE_VERSION = "18"
+NPM_VERSION = "9"
+
+# SPA 路由重定向：所有路径都返回 index.html
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200

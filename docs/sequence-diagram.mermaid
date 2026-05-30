@@ -1,69 +1,34 @@
 sequenceDiagram
-    actor User
-    participant React as React 前端
-    participant API as Express API
-    participant DB as SQLite/Prisma
-    participant DeepSeek as DeepSeek API
+    participant Client as 前端 (Cloudflare Pages)
+    participant Worker as Cloudflare Worker
+    participant Hono as Hono App
+    participant Middleware as 中间件 (CORS, Auth)
+    participant Route as 路由 Handler
+    participant Service as Service 层
+    participant D1 as D1 Database
+    participant JWT as JWT 工具
 
-    Note over User,DeepSeek: === 创建训练计划 ===
-    User->>React: 点击「新建计划」
-    React->>API: GET /api/exercises?category=chest
-    API->>DB: prisma.exercise.findMany()
-    DB-->>API: 动作列表
-    API-->>React: {code:0, data:[Exercise...]}
-
-    User->>React: 搜索并添加动作，设置组数/次数
-    React->>API: POST /api/workout-plans {name, exercises:[...]}
-    API->>DB: prisma.workoutPlan.create() + planExercise.createMany()
-    DB-->>API: 创建成功
-    API-->>React: {code:0, data:WorkoutPlan}
-
-    Note over User,DeepSeek: === 执行训练 ===
-    User->>React: 进入计划详情，点击「开始训练」
-    React->>React: 展示动作列表（按 dayOfWeek 过滤）
-    User->>React: 逐组填写 重量/次数
-    User->>React: 完成全部动作，点击「保存记录」
-    React->>API: POST /api/workout-logs {planId, exercises:[{exerciseId, sets:[{reps,weight}]}]}
-    API->>DB: prisma.workoutLog.create() + 嵌套创建 logExercises + logSets
-    DB-->>API: 创建成功
-    API-->>React: {code:0, data:WorkoutLog}
-
-    Note over User,DeepSeek: === AI 分析 ===
-    User->>React: 在对话页问「分析我今天的训练」
-    React->>API: POST /api/chat {message, sessionId}
-    API->>DB: 获取用户最近训练记录
-    API->>API: 构造 prompt（用户数据 + 问题）
-    API->>DeepSeek: POST /chat/completions (stream=true)
-    DeepSeek-->>API: SSE: data: {choices:[{delta:{content:"..."}}]}
-    Note over API,DeepSeek: ... streaming ...
-    DeepSeek-->>API: SSE: data: [DONE]
+    Client->>Worker: HTTP Request (with/without Bearer token)
+    Worker->>Hono: fetch(request, env, ctx)
+    Hono->>Middleware: CORS 检查
+    Middleware-->>Hono: 允许/拒绝
     
-    loop 每个 token
-        API-->>React: SSE: data: {token}
-        React-->>User: 逐字显示 AI 回复
+    alt 需要认证的路由
+        Hono->>Middleware: authMiddleware
+        Middleware->>JWT: verifyToken(token)
+        JWT-->>Middleware: payload or null
+        alt token 无效
+            Middleware-->>Hono: 401 Unauthorized
+            Hono-->>Client: { code: 401, message: '未认证' }
+        else token 有效
+            Middleware->>Hono: c.set('user', payload)
+        end
     end
-    
-    API->>DB: 保存 user message + assistant message
 
-    Note over User,DeepSeek: === TDEE 计算 + 饮食记录 ===
-    User->>React: 进入饮食页，填写/确认身体数据
-    React->>API: POST /api/diet/tdee {gender,weight,height,age,activityLevel,goal}
-    API->>API: Mifflin-St Jeor 公式计算 BMR → TDEE → 宏量营养素分配
-    API-->>React: {code:0, data:{tdee, protein, carbs, fat, bmr}}
-
-    User->>React: 搜索「鸡蛋」
-    React->>API: GET /api/food-items?search=鸡蛋
-    API->>DB: prisma.foodItem.findMany({where:{name:{contains:"鸡蛋"}}})
-    DB-->>API: [FoodItem...]
-    alt 本地数据库未找到
-        API->>DeepSeek: 「请给出鸡蛋(100g)的营养成分：JSON格式」
-        DeepSeek-->>API: {calories:144, protein:13.3, carbs:2.8, fat:8.8}
-        API->>DB: 自动存入 foodItem 表
-    end
-    API-->>React: {code:0, data:[FoodItem...]}
-
-    User->>React: 选择食物，输入克数，选择餐次
-    React->>API: POST /api/meal-records {foodItemId, quantityGrams, mealType, date}
-    API->>DB: prisma.mealRecord.create()
-    DB-->>API: 创建成功
-    API-->>React: {code:0, data:MealRecord}
+    Hono->>Route: 路由匹配 → handler(c)
+    Route->>Service: 调用业务逻辑
+    Service->>D1: drizzle.query(...)
+    D1-->>Service: 查询结果
+    Service-->>Route: 业务数据
+    Route-->>Hono: c.json({ code: 0, data })
+    Hono-->>Client: HTTP Response (JSON)

@@ -1,0 +1,16 @@
+name = "fitmate-api"
+main = "src/index.ts"
+compatibility_date = "2024-05-30"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+CORS_ORIGIN = "http://localhost:5173,https://fitmate.pages.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fitmate-db"
+database_id = ""  # 部署时通过 wrangler d1 create 创建
+
+[triggers]
+crons = []  # 暂时不需要定时任务

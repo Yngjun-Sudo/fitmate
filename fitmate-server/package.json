@@ -1,0 +1,32 @@
+{
+  "name": "fitmate-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc",
+    "deploy": "npm run build && wrangler deploy",
+    "d1:create": "wrangler d1 create fitmate-db",
+    "d1:execute": "wrangler d1 execute fitmate-db --local --file",
+    "d1:migrate": "wrangler d1 migrations apply fitmate-db --local",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/zod-validator": "^0.2.0",
+    "zod": "^3.23.0",
+    "drizzle-orm": "^0.30.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "typescript": "^5.4.0",
+    "@cloudflare/workers-types": "^4.0.0",
+    "drizzle-kit": "^0.20.0",
+    "@types/node": "^20.12.0",
+    "vitest": "^1.0.0"
+  }
+}

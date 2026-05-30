@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant Client as 前端
+    participant ChatRoute as /api/chat
+    participant AIService as aiService
+    participant DeepSeek as DeepSeek API
+    participant D1 as D1 Database
+    participant ToolExec as executeToolCall
+
+    Client->>ChatRoute: POST /api/chat { message, sessionId }
+    ChatRoute->>ChatRoute: 设置 SSE Headers
+    ChatRoute->>Client: data: { type: 'session', sessionId }
+    
+    ChatRoute->>AIService: buildMessages(userId, sessionId)
+    AIService->>D1: 查询 chat_messages (历史)
+    AIService->>D1: 查询 users (用户资料)
+    AIService->>D1: 查询 workout_logs (近期训练)
+    AIService->>D1: 查询 meal_records (近期饮食)
+    AIService-->>ChatRoute: messages[] (system + history)
+
+    alt 检测到计划类请求
+        ChatRoute->>AIService: processToolCalls(messages, userId)
+        AIService->>DeepSeek: POST /v1/chat/completions (非流式, tools=[create_workout_plan])
+        DeepSeek-->>AIService: tool_calls: [{ function: { name, arguments } }]
+        AIService->>ToolExec: executeToolCall(toolCall, userId)
+        ToolExec->>D1: 查询/创建 exercises
+        ToolExec->>D1: 创建 workout_plans + workout_plan_exercises
+        ToolExec-->>AIService: ToolResult { content: '计划已创建' }
+        AIService-->>ChatRoute: { hasToolCalls: true, toolResults }
+        ChatRoute->>Client: data: { type: 'tool_result', content }
+    else 普通对话
+        ChatRoute->>AIService: streamChat(messages)
+        AIService->>DeepSeek: POST /v1/chat/completions (stream=true)
+        loop 流式读取
+            DeepSeek-->>ChatRoute: chunk: { choices[0].delta.content }
+            ChatRoute->>Client: data: { type: 'token', content }
+        end
+    end
+
+    ChatRoute->>D1: 保存 AI 回复 (chat_messages)
+    ChatRoute->>Client: data: [DONE]

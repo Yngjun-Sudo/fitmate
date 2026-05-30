@@ -1,0 +1,49 @@
+name = "fitmate-server"
+main = "src/index.ts"
+compatibility_date = "2024-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 数据库绑定
+[[d1_databases]]
+binding = "DB"
+database_name = "fitmate-db"
+database_id = ""  # 运行 `wrangler d1 create fitmate-db` 后填入 ID
+
+# 环境变量（非敏感）
+[vars]
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+CORS_ORIGIN = "http://localhost:5173,https://fitmate.pages.dev"
+
+# 敏感信息（通过 `wrangler secret put` 设置）
+# JWT_SECRET
+# DEEPSEEK_API_KEY
+
+# 构建配置
+[build]
+command = "npm run build"
+cwd = "."
+watch_dir = ["src"]
+
+# 开发环境配置
+[dev]
+ip = "0.0.0.0"
+port = 8787
+local_protocol = "http"
+upstream_protocol = "http"
+
+# 迁移配置（D1）
+[[migrations]]
+tag = "v1"
+new_sqlite_migrations = [
+  "./d1/migrations/0001_create_users.sql",
+  "./d1/migrations/0002_create_exercises.sql",
+  "./d1/migrations/0003_create_workout_plans.sql",
+  "./d1/migrations/0004_create_workout_plan_exercises.sql",
+  "./d1/migrations/0005_create_workout_logs.sql",
+  "./d1/migrations/0006_create_workout_log_exercises.sql",
+  "./d1/migrations/0007_create_workout_log_sets.sql",
+  "./d1/migrations/0008_create_food_items.sql",
+  "./d1/migrations/0009_create_meal_records.sql",
+  "./d1/migrations/0010_create_chat_sessions.sql",
+  "./d1/migrations/0011_create_chat_messages.sql",
+]

@@ -6,7 +6,7 @@ classDiagram
         +String name
         +Float heightCm
         +Float weightKg
-        +Date birthDate
+        +DateTime birthDate
         +String gender
         +String goal
         +String activityLevel
@@ -54,7 +54,7 @@ classDiagram
         +String id
         +String userId
         +String planId
-        +Date date
+        +DateTime date
         +Int durationMinutes
         +String notes
         +DateTime createdAt
@@ -92,7 +92,7 @@ classDiagram
     class MealRecord {
         +String id
         +String userId
-        +Date date
+        +DateTime date
         +String mealType
         +String foodItemId
         +Float quantityGrams
@@ -115,16 +115,21 @@ classDiagram
         +DateTime createdAt
     }
 
-    User "1" -- "*" WorkoutPlan : owns
-    User "1" -- "*" WorkoutLog : records
-    User "1" -- "*" MealRecord : tracks
-    User "1" -- "*" ChatSession : has
-    User "1" -- "*" FoodItem : creates(custom)
-    WorkoutPlan "1" -- "*" WorkoutPlanExercise : contains
-    Exercise "1" -- "*" WorkoutPlanExercise : referenced_by
-    WorkoutLog "1" -- "*" WorkoutLogExercise : contains
-    WorkoutPlan "1" -- "*" WorkoutLog : based_on
-    Exercise "1" -- "*" WorkoutLogExercise : referenced_by
-    WorkoutLogExercise "1" -- "*" WorkoutLogSet : has
-    FoodItem "1" -- "*" MealRecord : referenced_by
-    ChatSession "1" -- "*" ChatMessage : contains
+    User "1" --> "0..*" WorkoutPlan : has
+    User "1" --> "0..*" WorkoutLog : has
+    User "1" --> "0..*" MealRecord : has
+    User "1" --> "0..*" ChatSession : has
+    User "1" --> "0..*" FoodItem : creates
+
+    WorkoutPlan "1" --> "0..*" WorkoutPlanExercise : contains
+    Exercise "1" --> "0..*" WorkoutPlanExercise : used in
+
+    WorkoutPlan "1" --> "0..*" WorkoutLog : tracks
+    WorkoutLog "1" --> "0..*" WorkoutLogExercise : contains
+    Exercise "1" --> "0..*" WorkoutLogExercise : used in
+
+    WorkoutLogExercise "1" --> "0..*" WorkoutLogSet : has
+
+    FoodItem "1" --> "0..*" MealRecord : tracked in
+
+    ChatSession "1" --> "0..*" ChatMessage : contains
