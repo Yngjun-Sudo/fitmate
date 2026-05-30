@@ -6,9 +6,19 @@
     "dev": "wrangler dev --local --persist",
     "build": "tsc",
     "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "deploy:staging": "wrangler deploy --env staging",
     "d1:create": "wrangler d1 create fitmate-db",
+    "d1:create:prod": "wrangler d1 create fitmate-db-prod --env production",
+    "d1:create:staging": "wrangler d1 create fitmate-db-staging --env staging",
     "d1:migrate": "wrangler d1 migrations apply fitmate-db --local",
-    "d1:studio": "wrangler d1 info fitmate-db --local"
+    "d1:migrate:prod": "wrangler d1 migrations apply fitmate-db-prod --env production",
+    "d1:migrate:staging": "wrangler d1 migrations apply fitmate-db-staging --env staging",
+    "d1:studio": "wrangler d1 info fitmate-db --local",
+    "type-check": "tsc --noEmit",
+    "lint": "echo 'Linting not configured yet'",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "hono": "^4.0.0",

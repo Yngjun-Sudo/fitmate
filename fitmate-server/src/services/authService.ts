@@ -1,7 +1,7 @@
-import { users } from '../d1/schema';
-import { db } from '../db';
+import { users } from '../../d1/schema';
+import { db } from '../../db';
 import { eq } from 'drizzle-orm';
-import { signToken } from '../utils/jwt';
+import { signToken } from '../../utils/jwt';
 import type { Context } from 'hono';
 import type { RegisterRequest, LoginRequest, UserInfo } from '../types/auth';
 

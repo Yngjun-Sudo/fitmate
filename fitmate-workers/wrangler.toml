@@ -3,14 +3,59 @@ main = "src/index.ts"
 compatibility_date = "2024-05-30"
 compatibility_flags = ["nodejs_compat"]
 
+# Production environment
+[env.production]
+name = "fitmate-api-prod"
+route = ""  # Add your production route
+
+# Staging environment
+[env.staging]
+name = "fitmate-api-staging"
+route = ""  # Add your staging route
+
 [vars]
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-CORS_ORIGIN = "http://localhost:5173,https://fitmate.pages.dev"
+CORS_ORIGIN = "http://localhost:5173,https://fitmate.pages.dev,https://fitmate.com"
+
+# Production vars (override in wrangler secret)
+[env.production.vars]
+CORS_ORIGIN = "https://fitmate.com,https://www.fitmate.com"
+
+[env.staging.vars]
+CORS_ORIGIN = "https://staging.fitmate.com"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "fitmate-db"
-database_id = ""  # 部署时通过 wrangler d1 create 创建
+database_id = ""  # Deploy时使用 wrangler d1 create 创建
+
+# Production database
+[env.production.d1_databases]
+binding = "DB"
+database_name = "fitmate-db-prod"
+database_id = ""  # Production database ID
+
+# Staging database
+[env.staging.d1_databases]
+binding = "DB"
+database_name = "fitmate-db-staging"
+database_id = ""  # Staging database ID
 
 [triggers]
 crons = []  # 暂时不需要定时任务
+
+# Build configuration
+[build]
+command = "npm run build"
+watch_dir = "src"
+
+# Upload configuration
+[upload]
+format = "modules"
+main = "./src/index.ts"
+
+# Miniflare configuration (local dev)
+[miniflare]
+bindings = [
+  { type = "d1", name = "DB", database_name = "fitmate-db-local", database_id = "" }
+]
