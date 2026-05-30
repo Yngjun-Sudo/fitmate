@@ -2,7 +2,7 @@ import { getDatabase } from '../db';
 import { generateToken, verifyToken } from '../utils/jwt';
 import type { Context } from 'hono';
 import type { RegisterRequest, LoginRequest, UserInfo } from '../types/auth';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 // Password hashing utility using Web Crypto API
 async function hashPassword(password: string, salt: string): Promise<string> {

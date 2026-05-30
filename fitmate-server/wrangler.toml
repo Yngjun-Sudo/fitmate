@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "fitmate-db"
-database_id = ""  # 运行 `wrangler d1 create fitmate-db` 后填入 ID
+database_id = "8683484f-076f-4742-9bb3-810625d82171"
 
 # 环境变量（非敏感）
 [vars]

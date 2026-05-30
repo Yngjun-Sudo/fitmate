@@ -4,7 +4,7 @@ import type { ApiResponse } from '../types';
 // 支持多环境部署：Vercel / Netlify / 本地开发
 // Netlify 部署时设置 VITE_API_URL 指向 Render 后端
 // Render 后端地址需要在部署后填入
-const BASE = (import.meta as any).env?.VITE_API_URL || 'https://fitmate-api-jet.vercel.app';
+const BASE = (import.meta as any).env?.VITE_API_URL || 'https://fitmate-server.qyl158875.workers.dev';
 export const API_BASE = BASE + '/api';
 
 const apiClient = axios.create({

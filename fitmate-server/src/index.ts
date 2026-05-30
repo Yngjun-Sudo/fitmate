@@ -20,10 +20,3 @@ export default {
     return app.fetch(request, env, ctx);
   },
 };
-
-// 本地开发（可选，使用 wrangler dev 时不需要）
-if (import.meta.url.startsWith('file:')) {
-  const port = 8787;
-  console.log(`🏋️ FitMate Server running on http://localhost:${port}`);
-  console.log(`📋 Health check: http://localhost:${port}/api/health`);
-}
