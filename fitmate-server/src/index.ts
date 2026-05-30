@@ -16,12 +16,7 @@ type Env = {
 // Workers 入口
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // 将 env 注入到 Hono 上下文
-    app.use('*', async (c, next) => {
-      c.set('env', env);
-      await next();
-    });
-
+    // 将 env 注入到 Hono 上下文（通过 c.env 访问）
     return app.fetch(request, env, ctx);
   },
 };

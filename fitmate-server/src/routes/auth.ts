@@ -33,7 +33,7 @@ authRouter.post('/register', async (c: Context) => {
       return sendError(c, 409, 'Email already exists');
     }
     
-    return success(c, result, 'Registration successful');
+    return sendSuccess(c, result, 'Registration successful');
   } catch (err) {
     console.error('Register error:', err);
     return sendError(c, 500, 'Registration failed');
@@ -56,7 +56,7 @@ authRouter.post('/login', async (c: Context) => {
       return sendError(c, 401, 'Invalid email or password');
     }
     
-    return success(c, result, 'Login successful');
+    return sendSuccess(c, result, 'Login successful');
   } catch (err) {
     console.error('Login error:', err);
     return sendError(c, 500, 'Login failed');
@@ -70,19 +70,19 @@ authRouter.get('/me', async (c: Context) => {
     const payload = c.get('jwtPayload');
     
     if (!payload || !payload.userId) {
-      return error(c, 'Unauthorized', 401);
+      return sendError(c, 401, 'Unauthorized');
     }
     
     const user = await getUserById(c, payload.userId);
     
     if (!user) {
-      return error(c, 'User not found', 404);
+      return sendError(c, 404, 'User not found');
     }
     
-    return success(c, user, 'success');
+    return sendSuccess(c, user, 'success');
   } catch (err) {
     console.error('Get me error:', err);
-    return error(c, 'Failed to get user info', 500);
+    return sendError(c, 500, 'Failed to get user info');
   }
 });
 

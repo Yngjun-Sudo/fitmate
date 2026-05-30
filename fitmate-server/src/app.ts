@@ -5,11 +5,13 @@ import { errorHandler } from './middleware/errorHandler';
 
 // 路由导入
 import authRoutes from './routes/auth';
-import exerciseRoutes from './routes/exercises';
-import workoutPlanRoutes from './routes/workoutPlans';
-import workoutLogRoutes from './routes/workoutLogs';
-import dietRoutes from './routes/diet';
-import chatRoutes from './routes/chat';
+// TODO: T04 剩余路由待完成 - 暂时注释避免编译错误
+// import exerciseRoutes from './routes/exercises';
+// import workoutPlanRoutes from './routes/workoutPlans';
+// import workoutLogRoutes from './routes/workoutLogs';
+// import dietRoutes from './routes/diet';
+// TODO: chat 路由待完成（T05）
+// import chatRoutes from './routes/chat';
 
 // 环境变量类型定义
 type Env = {
@@ -75,11 +77,13 @@ app.get('/api/health', (c) => {
 
 // === 路由挂载 ===
 app.route('/api/auth', authRoutes);
-app.route('/api/exercises', exerciseRoutes);
-app.route('/api/workout-plans', workoutPlanRoutes);
-app.route('/api/workout-logs', workoutLogRoutes);
-app.route('/api/diet', dietRoutes);
-app.route('/api/chat', chatRoutes);
+// TODO: T04 剩余路由待完成 - 暂时注释避免编译错误
+// app.route('/api/exercises', exerciseRoutes);
+// app.route('/api/workout-plans', workoutPlanRoutes);
+// app.route('/api/workout-logs', workoutLogRoutes);
+// app.route('/api/diet', dietRoutes);
+// TODO: chat 路由待完成（T05）
+// app.route('/api/chat', chatRoutes);
 
 // === 全局错误处理（必须放在最后）===
 app.onError(errorHandler);

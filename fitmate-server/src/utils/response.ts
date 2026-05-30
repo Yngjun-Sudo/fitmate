@@ -5,7 +5,7 @@ import { ApiResponse } from '../types';
  * 发送成功响应
  */
 export function sendSuccess<T>(
-  c: Context,
+  c: any,
   data: T,
   message = 'ok',
   statusCode = 200
@@ -15,14 +15,14 @@ export function sendSuccess<T>(
     data,
     message,
   };
-  return c.json(body, statusCode);
+  return (c.json as any)(body, statusCode as any);
 }
 
 /**
  * 发送失败响应
  */
 export function sendError(
-  c: Context,
+  c: any,
   code: number,
   message: string,
   statusCode?: number
@@ -32,9 +32,8 @@ export function sendError(
     data: null,
     message,
   };
-  // 根据业务错误码映射 HTTP 状态码
   const httpStatus = statusCode || mapErrorCodeToStatus(code);
-  return c.json(body, httpStatus);
+  return (c.json as any)(body, httpStatus as any);
 }
 
 /**

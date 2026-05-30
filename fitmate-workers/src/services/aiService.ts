@@ -69,10 +69,12 @@ export interface StreamChunk {
 export class AIService {
   private apiKey: string;
   private baseURL: string;
+  private model: string;
 
-  constructor(apiKey: string, baseURL: string) {
+  constructor(apiKey: string, baseURL: string, model?: string) {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
+    this.model = model || 'deepseek-chat';
   }
 
   /**
@@ -84,7 +86,7 @@ export class AIService {
     onChunk?: (chunk: string) => void
   ): Promise<ReadableStream<Uint8Array>> {
     const requestBody: ChatCompletionRequest = {
-      model: 'deepseek-chat',
+      model: this.model,
       messages,
       temperature: 0.7,
       max_tokens: 2000,
@@ -145,7 +147,7 @@ export class AIService {
 
             try {
               const parsed: StreamChunk = JSON.parse(data);
-              const content = parsed.choices[0]?.delta?.content || '';
+              const content = parsed.choices?.[0]?.delta?.content || '';
               
               if (content && onChunk) {
                 onChunk(content);
@@ -156,6 +158,8 @@ export class AIService {
               controller.enqueue(new TextEncoder().encode(chunkData));
             } catch (e) {
               console.error('Error parsing SSE chunk:', e);
+              // Skip malformed chunks instead of breaking
+              continue;
             }
           }
         }
@@ -280,12 +284,16 @@ export class AIService {
   ): Promise<string> {
     const { title, description, exercises } = args;
 
+    if (!title || !exercises || !Array.isArray(exercises)) {
+      throw new Error('Invalid arguments: title and exercises array are required');
+    }
+
     // Create workout plan
     const planResult = await db
       .prepare(
         'INSERT INTO workout_plans (user_id, title, description) VALUES (?, ?, ?) RETURNING id'
       )
-      .bind(userId, title, description)
+      .bind(userId, String(title), description ? String(description) : null)
       .first<{ id: number }>();
 
     if (!planResult) {
@@ -296,11 +304,16 @@ export class AIService {
 
     // Add exercises to plan
     for (const ex of exercises as Array<Record<string, number>>) {
+      if (!ex.exercise_id || !ex.sets || !ex.reps) {
+        console.warn('Skipping invalid exercise:', ex);
+        continue;
+      }
+
       await db
         .prepare(
           'INSERT INTO workout_plan_exercises (workout_plan_id, exercise_id, sets, reps, weight) VALUES (?, ?, ?, ?, ?)'
         )
-        .bind(planId, ex.exercise_id, ex.sets, ex.reps, ex.weight || null)
+        .bind(planId, ex.exercise_id, ex.sets, ex.reps, ex.weight ?? null)
         .run();
     }
 
@@ -314,12 +327,16 @@ export class AIService {
   ): Promise<string> {
     const { workout_plan_id, duration_minutes, exercises } = args;
 
+    if (!exercises || !Array.isArray(exercises)) {
+      throw new Error('Invalid arguments: exercises array is required');
+    }
+
     // Create workout log
     const logResult = await db
       .prepare(
         'INSERT INTO workout_logs (user_id, workout_plan_id, duration_minutes) VALUES (?, ?, ?) RETURNING id'
       )
-      .bind(userId, workout_plan_id || null, duration_minutes || null)
+      .bind(userId, workout_plan_id ? Number(workout_plan_id) : null, duration_minutes ? Number(duration_minutes) : null)
       .first<{ id: number }>();
 
     if (!logResult) {
@@ -330,11 +347,16 @@ export class AIService {
 
     // Add exercise logs
     for (const ex of exercises as Array<Record<string, number>>) {
+      if (!ex.exercise_id || !ex.sets_completed || !ex.reps_completed) {
+        console.warn('Skipping invalid exercise log:', ex);
+        continue;
+      }
+
       await db
         .prepare(
           'INSERT INTO workout_log_exercises (workout_log_id, exercise_id, sets_completed, reps_completed, weight_used) VALUES (?, ?, ?, ?, ?)'
         )
-        .bind(logId, ex.exercise_id, ex.sets_completed, ex.reps_completed, ex.weight_used || null)
+        .bind(logId, ex.exercise_id, ex.sets_completed, ex.reps_completed, ex.weight_used ?? null)
         .run();
     }
 
@@ -347,10 +369,14 @@ export class AIService {
   ): Promise<string> {
     const { query, muscle_group } = args;
 
+    if (!query || typeof query !== 'string') {
+      throw new Error('Invalid arguments: query string is required');
+    }
+
     let sql = 'SELECT * FROM exercises WHERE name LIKE ?';
     const params: unknown[] = [`%${query}%`];
 
-    if (muscle_group) {
+    if (muscle_group && typeof muscle_group === 'string') {
       sql += ' AND muscle_group = ?';
       params.push(muscle_group);
     }
@@ -366,6 +392,6 @@ export class AIService {
 /**
  * Create AI service instance from environment
  */
-export function createAIService(env: { DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string }): AIService {
-  return new AIService(env.DEEPSEEK_API_KEY, env.DEEPSEEK_BASE_URL);
+export function createAIService(env: { DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string; DEEPSEEK_MODEL?: string }): AIService {
+  return new AIService(env.DEEPSEEK_API_KEY, env.DEEPSEEK_BASE_URL, env.DEEPSEEK_MODEL);
 }

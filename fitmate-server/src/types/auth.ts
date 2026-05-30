@@ -26,14 +26,14 @@ export interface UserInfo {
   id: string;
   email: string;
   name: string;
-  heightCm?: number;
-  weightKg?: number;
-  birthDate?: number;
-  gender?: string;
-  goal?: string;
-  activityLevel?: string;
-  createdAt: number;
-  updatedAt: number;
+  heightCm: number | null;
+  weightKg: number | null;
+  birthDate: number | null;
+  gender: string | null;
+  goal: string | null;
+  activityLevel: string | null;
+  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 export interface JwtPayload {

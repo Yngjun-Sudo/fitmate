@@ -27,12 +27,12 @@ chatRouter.post(
     })
   ),
   async (c) => {
-    const user = c.get('user');
+    const user = c.get('user') as { userId: number; username: string; email: string };
     const { message, conversation_id, stream } = c.req.valid('json');
 
     try {
-      const aiService = createAIService(c.env);
-      const db = c.env.DB;
+      const aiService = createAIService(c.env as { DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string });
+      const db = c.env.DB as D1Database;
 
       // Get or create conversation
       let chatSessionId = conversation_id;
@@ -61,13 +61,16 @@ chatRouter.post(
         .bind(chatSessionId, 'user', message)
         .run();
 
-      // Get conversation history
+      // Get conversation history (last 20 messages, newest first)
       const historyMessages = await db
         .prepare(
-          'SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT 20'
+          'SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 20'
         )
         .bind(chatSessionId)
         .all<{ role: string; content: string }>();
+
+      // Reverse to get chronological order
+      historyMessages.results.reverse();
 
       // Build messages for AI
       const messages: ChatMessage[] = [
@@ -91,40 +94,120 @@ Use the available tools to help users achieve their fitness goals. Be encouragin
       // If streaming is requested, return SSE stream
       if (stream) {
         try {
-          const aiStream = await aiService.createChatCompletion(
+          // Call DeepSeek API directly for streaming
+          const requestBody = {
+            model: 'deepseek-chat',
             messages,
-            aiService.getAvailableTools(),
-            (chunk) => {
-              // Chunk received, will be forwarded by transform stream
-            }
-          );
+            temperature: 0.7,
+            max_tokens: 2000,
+            stream: true,
+            tools: aiService.getAvailableTools(),
+            tool_choice: 'auto',
+          };
 
-          // Return the stream directly from aiService
-          return new Response(aiStream, {
+          const aiResponse = await fetch(`${c.env.DEEPSEEK_BASE_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${c.env.DEEPSEEK_API_KEY}`,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!aiResponse.ok) {
+            const errorText = await aiResponse.text();
+            throw new Error(`DeepSeek API error: ${aiResponse.status} ${errorText}`);
+          }
+
+          if (!aiResponse.body) {
+            throw new Error('Response body is null');
+          }
+
+          // Process SSE stream and save to database
+          let buffer = '';
+          const decoder = new TextDecoder();
+          let fullResponse = '';
+
+          const transformStream = new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              buffer += decoder.decode(chunk, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  
+                  if (data === '[DONE]') {
+                    controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+                    controller.terminate();
+                    return;
+                  }
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.choices?.[0]?.delta?.content || '';
+                    
+                    if (content) {
+                      fullResponse += content;
+                    }
+
+                    // Forward chunk to client
+                    controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+                  } catch (e) {
+                    console.error('SSE parse error:', e);
+                    // Skip malformed chunks
+                  }
+                }
+              }
+            },
+
+            async flush(controller) {
+              // Save assistant response to database
+              if (fullResponse) {
+                try {
+                  await db
+                    .prepare('INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)')
+                    .bind(chatSessionId, 'assistant', fullResponse)
+                    .run();
+                } catch (e) {
+                  console.error('Failed to save assistant message:', e);
+                }
+              }
+
+              if (buffer) {
+                controller.enqueue(new TextEncoder().encode(buffer));
+              }
+              controller.terminate();
+            },
+          });
+
+          return new Response(aiResponse.body.pipeThrough(transformStream), {
             headers: {
               'Content-Type': 'text/event-stream',
               'Cache-Control': 'no-cache',
               'Connection': 'keep-alive',
               'X-Accel-Buffering': 'no',
+              'Access-Control-Allow-Origin': c.env.CORS_ORIGIN || '*',
             },
           });
         } catch (error) {
-          console.error('Stream error:', error);
+          console.error('Streaming error:', error);
           return c.json(
-            { code: 500, data: null, message: error instanceof Error ? error.message : 'Stream error' },
+            { code: 500, data: null, message: error instanceof Error ? error.message : 'Streaming error' },
             500
           );
         }
       }
 
-      // Non-streaming response
+      // Non-streaming response (use aiService for consistency)
       const response = await fetch(
         `${c.env.DEEPSEEK_BASE_URL}/chat/completions`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${c.env.DEEPSEEK_API_KEY}`,
+            'Authorization': `Bearer ${c.env.DEEPSEEK_API_KEY}`,
           },
           body: JSON.stringify({
             model: 'deepseek-chat',
@@ -190,16 +273,13 @@ Use the available tools to help users achieve their fitness goals. Be encouragin
           }
         }
 
-        // Save tool results and get final response
-        // (In practice, you'd make another API call with tool results)
-        responseContent = 'Function executed. ' + JSON.stringify(toolResults);
+        // TODO: Make another API call with tool results for final response
+        responseContent = 'Function executed. Results: ' + JSON.stringify(toolResults);
       }
 
       // Save assistant response
       await db
-        .prepare(
-          'INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)'
-        )
+        .prepare('INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)')
         .bind(chatSessionId, 'assistant', responseContent)
         .run();
 
@@ -231,8 +311,8 @@ Use the available tools to help users achieve their fitness goals. Be encouragin
  * Get user's chat conversations
  */
 chatRouter.get('/conversations', authMiddleware, async (c) => {
-  const user = c.get('user');
-  const db = c.env.DB;
+  const user = c.get('user') as { userId: number };
+  const db = c.env.DB as D1Database;
 
   try {
     const sessions = await db
@@ -264,13 +344,13 @@ chatRouter.get('/conversations', authMiddleware, async (c) => {
 });
 
 /**
- * GET /api/chat/conversations
+ * GET /api/chat/conversations/:id
  * Get messages in a conversation
  */
 chatRouter.get('/conversations/:id', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as { userId: number };
   const sessionId = parseInt(c.req.param('id'));
-  const db = c.env.DB;
+  const db = c.env.DB as D1Database;
 
   try {
     // Verify session belongs to user
@@ -308,13 +388,13 @@ chatRouter.get('/conversations/:id', authMiddleware, async (c) => {
 });
 
 /**
- * DELETE /api/chat/conversations
+ * DELETE /api/chat/conversations/:id
  * Delete a conversation
  */
 chatRouter.delete('/conversations/:id', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as { userId: number };
   const sessionId = parseInt(c.req.param('id'));
-  const db = c.env.DB;
+  const db = c.env.DB as D1Database;
 
   try {
     // Verify session belongs to user

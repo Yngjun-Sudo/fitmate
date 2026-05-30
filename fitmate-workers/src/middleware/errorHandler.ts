@@ -5,7 +5,7 @@
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { Context } from 'hono';
+import type { Context, ErrorHandler as HonoErrorHandler } from 'hono';
 
 /**
  * Custom error class for API errors
@@ -26,95 +26,99 @@ export class APIError extends Error {
  * Global error handler middleware
  * Catches all errors and returns consistent JSON response
  */
-export function errorHandler() {
-  return async (c: Context, next: () => Promise<void>) => {
-    try {
-      await next();
-    } catch (error) {
-      console.error('[Global Error Handler]', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        path: c.req.path,
-        method: c.req.method,
-        timestamp: new Date().toISOString(),
-      });
+export function errorHandler(): HonoErrorHandler {
+  return async (err: unknown, c: Context) => {
+    const error = err as Error & { 
+      status?: number; 
+      code?: number; 
+      errors?: unknown;
+      response?: Response;
+    };
+    
+    console.error('[Global Error Handler]', {
+      message: error?.message || 'Unknown error',
+      stack: error?.stack,
+      path: c.req.path,
+      method: c.req.method,
+      timestamp: new Date().toISOString(),
+    });
 
-      // Handle Hono HTTP exceptions
-      if (error instanceof HTTPException) {
-        return c.json(
-          {
-            code: error.status,
-            data: null,
-            message: error.message,
-            ...(error.res ? { details: error.res } : {}),
-          },
-          error.status
-        );
-      }
+    // Handle Hono HTTP exceptions
+    if (error instanceof HTTPException) {
+      const status = error.status || 500;
+      return c.json(
+        {
+          code: status,
+          data: null,
+          message: error.message,
+        },
+        status as any
+      );
+    }
 
-      // Handle custom API errors
-      if (error instanceof APIError) {
-        return c.json(
-          {
-            code: error.code,
-            data: error.details || null,
-            message: error.message,
-          },
-          error.status
-        );
-      }
+    // Handle custom API errors
+    if (error instanceof APIError) {
+      return c.json(
+        {
+          code: error.code,
+          data: error.details || null,
+          message: error.message,
+        },
+        error.status as any
+      );
+    }
 
-      // Handle validation errors (Zod)
-      if (error.name === 'ZodError' || error.constructor?.name === 'ZodError') {
-        return c.json(
-          {
-            code: 400,
-            data: error.errors || null,
-            message: 'Validation error',
-          },
-          400
-        );
-      }
+    // Handle validation errors (Zod)
+    const errorName = error?.name || '';
+    if (errorName === 'ZodError') {
+      const zodError = error as { errors?: unknown };
+      return c.json(
+        {
+          code: 400,
+          data: zodError.errors || null,
+          message: 'Validation error',
+        },
+        400 as any
+      );
+    }
 
-      // Handle database errors
-      if (error.message?.includes('D1_ERROR')) {
-        return c.json(
-          {
-            code: 500,
-            data: null,
-            message: 'Database error occurred',
-          },
-          500
-        );
-      }
-
-      // Handle fetch/network errors
-      if (error.name === 'FetchError' || error.message?.includes('fetch')) {
-        return c.json(
-          {
-            code: 503,
-            data: null,
-            message: 'External service unavailable',
-          },
-          503
-        );
-      }
-
-      // Default: Internal server error
+    // Handle database errors
+    const errorMessage = error?.message || '';
+    if (errorMessage.includes('D1_ERROR')) {
       return c.json(
         {
           code: 500,
           data: null,
-          message:
-            c.env.NODE_ENV === 'production'
-              ? 'Internal server error'
-              : error instanceof Error
-              ? error.message
-              : 'Unknown error',
+          message: 'Database error occurred',
         },
-        500
+        500 as any
       );
     }
+
+    // Handle fetch/network errors
+    if (errorName === 'FetchError' || errorMessage.includes('fetch')) {
+      return c.json(
+        {
+          code: 503,
+          data: null,
+          message: 'External service unavailable',
+        },
+        503 as any
+      );
+    }
+
+    // Default: Internal server error
+    return c.json(
+      {
+        code: 500,
+        data: null,
+        message:
+          c.env?.NODE_ENV === 'production'
+            ? 'Internal server error'
+            : error?.message || 'Unknown error',
+      },
+      500 as any
+    );
   };
 }
 
@@ -129,7 +133,7 @@ export function notFoundHandler() {
         data: null,
         message: `Route ${c.req.method} ${c.req.path} not found`,
       },
-      404
+      404 as any
     );
   };
 }
@@ -149,14 +153,18 @@ export function timeoutHandler(maxMs: number = 10000) {
     try {
       await Promise.race([next(), timeoutPromise]);
     } catch (error) {
-      if (error instanceof APIError && error.code === 408) {
+      const apiError = error as { code?: number; message?: string };
+      if (apiError.code === 408) {
         return c.json(
           {
             code: 408,
             data: null,
             message: 'Request timeout. Please try again.',
           },
-          408
+          408 as any,
+          {
+            'Retry-After': Math.ceil(maxMs / 1000).toString(),
+          }
         );
       }
       throw error;
@@ -186,7 +194,7 @@ export function rateLimitHandler(maxRequests: number = 100, windowMs: number = 6
           data: null,
           message: 'Rate limit exceeded. Please try again later.',
         },
-        429,
+        429 as any,
         {
           'Retry-After': Math.ceil((requestData.resetTime - now) / 1000).toString(),
         }

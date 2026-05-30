@@ -9,11 +9,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "lib": ["ES2022"],
     "isolatedModules": true,
     "noEmit": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "d1/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

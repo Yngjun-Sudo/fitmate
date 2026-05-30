@@ -1,8 +1,8 @@
 import { verifyToken } from '../utils/jwt';
-import type { Context, Next } from 'hono';
+import { Context, Next, MiddlewareHandler } from 'hono';
 import type { JwtPayload } from '../types/auth';
 
-export async function authMiddleware(c: Context, next: Next) {
+export const authMiddleware: MiddlewareHandler = async (c: Context, next: Next) => {
   // Extract token from Authorization header
   const authHeader = c.req.header('Authorization');
   
@@ -13,7 +13,7 @@ export async function authMiddleware(c: Context, next: Next) {
   const token = authHeader.split(' ')[1];
   
   // Verify token
-  const payload = await verifyToken(c, token);
+  const payload = await verifyToken(token, c.env.JWT_SECRET);
   
   if (!payload) {
     return c.json({ code: 401, data: null, message: 'Unauthorized: Invalid or expired token' }, 401);
